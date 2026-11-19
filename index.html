@@ -157,6 +157,7 @@ input{user-select:text;-webkit-user-select:text;font-family:inherit;font-size:18
 .dim{opacity:.35;pointer-events:none}.code{background:#fff36b;color:#2a0a4a;padding:0 10px;border-radius:8px;letter-spacing:4px;margin-left:6px}
 .riv em{font-style:normal;font-size:10px;color:#7dffb0;margin-left:6px}
 #rmGo:disabled{filter:grayscale(1);opacity:.6}
+#onStatus code{background:rgba(0,0,0,.4);padding:2px 5px;border-radius:5px;font-size:11px;word-break:break-all}
 /* HUD */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
 #pos{position:absolute;left:calc(env(safe-area-inset-left) + 12px);top:calc(env(safe-area-inset-top) + 6px);font-size:46px;font-style:italic;text-shadow:3px 3px 0 #2a0a4a;line-height:1}
@@ -213,7 +214,7 @@ input{user-select:text;-webkit-user-select:text;font-family:inherit;font-size:18
   <h1 style="font-size:34px">SLIPSTREAM<span>'96</span></h1>
   <button class="mbtn" id="btnSingle">SINGLE RACE<small>Any of 50 tracks, one race</small></button>
   <button class="mbtn" id="btnGP">GRAND PRIX<small>10 cups · 5 races each · points & big cash bonus</small></button>
-  <button class="mbtn" id="btnOnline">ONLINE<small>Race friends live · world lap records</small></button>
+  <button class="mbtn" id="btnOnline">ONLINE<small>Race friends live with a room code</small></button>
   <button class="mbtn" id="btnGarage">GARAGE<small>Spend your winnings on parts & paint</small></button>
   <button class="mbtn" id="btnSettings">SETTINGS<small>Laps, difficulty, sound, camera</small></button>
   <div id="padStatus"></div><div class="help" id="help"></div><div id="rotate" class="hidden">Turn your phone sideways for the best view.</div>
@@ -245,8 +246,7 @@ input{user-select:text;-webkit-user-select:text;font-family:inherit;font-size:18
     <label class="fld">YOUR NAME <input id="onName" maxlength="16" placeholder="Racer" autocomplete="off"></label>
     <button class="big" id="onCreate">CREATE ROOM</button>
     <div class="joinrow"><input id="onCode" maxlength="4" placeholder="CODE" autocomplete="off"><button class="sec" id="onJoin">JOIN</button></div>
-    <div class="suhd"><span>OPEN ROOMS</span></div>
-    <div id="onRooms" class="rivals"></div>
+    <div class="hint" style="text-align:left">The host's phone runs the room — friends join with the 4-letter code. Works best on Wi-Fi or 5G.</div>
   </div>
   <button class="sec" data-back>◀ BACK</button>
 </div></div>
@@ -1585,73 +1585,74 @@ function loop(now){
   renderer.render(scene,camera);
 }
 
-// ================= ONLINE (Firebase Realtime Database over REST + live streaming) =================
-// Works on the GitHub Pages build. Change FB_URL to use a different database.
-const FB_URL=(()=>{try{const q=new URLSearchParams(location.search).get('fb');if(q)return q.replace(/\/$/,'');}catch(e){}
-  return 'https://oathless-e60d0-default-rtdb.firebaseio.com/slipstream96';})();
+// ================= ONLINE (peer-to-peer, no database) =================
+// The host's game is the room: friends connect straight to it with a 4-letter code (PeerJS / WebRTC).
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fb={u:p=>FB_URL+'/'+p+'.json',
-  async req(m,p,v){const r=await fetch(fb.u(p),{method:m,body:v===undefined?undefined:JSON.stringify(v)});if(!r.ok)throw new Error('fb '+r.status);return r.json();},
-  get:p=>fb.req('GET',p),put:(p,v)=>fb.req('PUT',p,v),patch:(p,v)=>fb.req('PATCH',p,v),del:p=>fb.req('DELETE',p),
-  stream(p,cb){const es=new EventSource(fb.u(p)),st={data:null};
-    const set=(parts,val)=>{if(!parts.length){st.data=val;return;}if(st.data==null||typeof st.data!=='object')st.data={};let o=st.data;
-      for(let i=0;i<parts.length-1;i++){if(o[parts[i]]==null||typeof o[parts[i]]!=='object')o[parts[i]]={};o=o[parts[i]];}
-      const k=parts[parts.length-1];if(val===null)delete o[k];else o[k]=val;};
-    const on=(ev,patch)=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}if(!m||typeof m.path!=='string')return;const parts=m.path.split('/').filter(Boolean);
-      if(patch&&m.data&&typeof m.data==='object'){for(const k in m.data)set([...parts,k],m.data[k]);}else set(parts,m.data);cb(st.data);};
-    es.addEventListener('put',e=>on(e,false));es.addEventListener('patch',e=>on(e,true));return es;}};
-const SV_TS={'.sv':'timestamp'};
-const NET={uid:(()=>{let u=null;try{u=localStorage.getItem('ss96_uid');}catch(e){}if(!u){u='p'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('ss96_uid',u);}catch(e){}}return u;})(),
-  ok:null,code:null,es:null,room:null,race:null,lastStart:0,sendT:0,hb:null,snaps:{},sig:''};
-let srvOff=0;const srvNow=()=>Date.now()+srvOff;
-async function netCheck(){try{const t0=Date.now();await fb.put('time/'+NET.uid,SV_TS);const v=await fb.get('time/'+NET.uid);const t1=Date.now();
-  if(typeof v!=='number')throw 0;srvOff=v-(t0+t1)/2;NET.ok=true;}catch(e){NET.ok=false;}return NET.ok;}
+const P2P_PREFIX='ss96o-';
+const NET={uid:'u'+Math.random().toString(36).slice(2,10),ok:null,err:null,code:null,peer:null,conns:{},host:null,room:null,race:null,lastStart:0,sendT:0,bcT:0,snaps:{},sig:'',isHost:false};
+let srvOff=0;const srvNow=()=>Date.now()+srvOff;// host clock
+function loadPeerLib(){return new Promise((res,rej)=>{if(window.Peer)return res();const s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+  s.onload=()=>window.Peer?res():rej(new Error('lib'));s.onerror=()=>rej(new Error('lib'));document.head.appendChild(s);});}
 function myName(){return (SV.name||'').trim()||'Racer';}
-function myEntry(){const id=carId(SV.sel.r,TYPES[SV.sel.t]);return {name:myName().slice(0,16),r:SV.sel.r,t:SV.sel.t,L:looks(id),ready:false,seen:SV_TS};}
-function netPushMe(){if(NET.code)fb.patch('rooms/'+NET.code+'/players/'+NET.uid,Object.assign(myEntry(),{ready:false})).catch(()=>{});}
-const amHost=()=>NET.room&&NET.room.host===NET.uid;
-function activePlayers(){const p=(NET.room&&NET.room.players)||{},now=srvNow();return Object.keys(p).filter(k=>p[k]&&(typeof p[k].seen!=='number'||now-p[k].seen<15000)).sort();}
-
-// ----- lobby browser -----
-async function netListRooms(){const el=$('onRooms');if(!el)return;
-  try{const L=await fb.get('lobbies')||{},now=srvNow();const rows=Object.entries(L).filter(([c,v])=>v&&v.status==='lobby'&&now-(v.updated||0)<20000).sort((a,b)=>b[1].updated-a[1].updated);
-    el.innerHTML=rows.length?'':'<div class="riv"><b>No open rooms right now. Create one!</b></div>';
-    for(const[c,v]of rows){const b=document.createElement('button');b.className='opt roomrow';b.innerHTML=`<b>${esc(c)}</b><span>${esc(v.hostName)}'s room · ${esc(TRACKS[v.track]?.name||'')} · ${v.n||1}/10</span>`;b.onclick=()=>netJoin(c);el.appendChild(b);}
-  }catch(e){el.innerHTML='<div class="riv"><b>Could not load rooms.</b></div>';}}
-let roomsTimer=0;
+function myEntry(){const id=carId(SV.sel.r,TYPES[SV.sel.t]);return {name:myName().slice(0,16),r:SV.sel.r,t:SV.sel.t,L:looks(id),ready:false};}
+const amHost=()=>NET.isHost;
+function activePlayers(){const p=(NET.room&&NET.room.players)||{};return Object.keys(p).sort((a,b)=>(p[a].j||0)-(p[b].j||0));}
+// ---- host side: owns the room and relays everything ----
+function hostBroadcast(){const msg={k:'room',R:NET.room,ht:Date.now()};for(const id in NET.conns){try{NET.conns[id].send(msg);}catch(e){}}netOnRoom();}
+function hostApply(uid,m){const R=NET.room;if(!R)return;
+  if(m.k==='hello'){if(Object.keys(R.players).length>=10){return 'full';}R.players[uid]=Object.assign(m.entry||{},{j:Date.now()});hostBroadcast();}
+  else if(m.k==='me'){if(R.players[uid])Object.assign(R.players[uid],m.patch||{});hostBroadcast();}
+  else if(m.k==='st'){if(!R.state)R.state={};R.state[uid]=m.s;}
+  else if(m.k==='res'){if(!R.results)R.results={};R.results[uid]=m.r;hostBroadcast();}}
+function hostSet(patch){Object.assign(NET.room,patch);hostBroadcast();}
+// ---- shared actions (host applies directly, guests ask the host) ----
+function sendMe(patch){if(NET.isHost){Object.assign(NET.room.players[NET.uid],patch);hostBroadcast();}else if(NET.host&&NET.host.open)NET.host.send({k:'me',patch});}
+function netPushMe(){if(NET.code)sendMe(myEntry());}
+async function netConnect(){try{await loadPeerLib();NET.ok=true;NET.err=null;}catch(e){NET.ok=false;NET.err=e;}return NET.ok;}
+function netWhy(){return 'Couldn\'t load the online connection library. Check your internet connection, then Retry.';}
 async function renderOnline(){
-  $('onName').value=myName()==='Racer'&&!SV.name?'':myName();$('onStatus').textContent='Connecting…';$('onBody').classList.add('dim');
-  const ok=NET.ok===true||await netCheck();
-  if(!ok){$('onStatus').innerHTML='Online play needs the GitHub Pages version of the game (this preview can\'t reach the online server).';return;}
-  $('onStatus').textContent='Online ✓';$('onBody').classList.remove('dim');netListRooms();clearInterval(roomsTimer);roomsTimer=setInterval(()=>{if(cur==='online')netListRooms();else clearInterval(roomsTimer);},4000);
-  if(NET.code){go('room');}}
+  $('onName').value=SV.name||'';$('onStatus').textContent='Getting online…';$('onBody').classList.add('dim');
+  const ok=NET.ok===true||await netConnect();
+  if(!ok){$('onStatus').innerHTML=netWhy()+'<br><button class="sec" id="onRetry">↻ RETRY</button>';$('onRetry').onclick=()=>{click();NET.ok=null;renderOnline();};$('onRetry').focus();return;}
+  $('onStatus').textContent='Create a room and share the code, or enter a friend\'s code.';$('onBody').classList.remove('dim');
+  if(NET.code)go('room');}
 function saveName(){const v=$('onName').value.replace(/[^\w \-.]/g,'').slice(0,16);SV.name=v;save();}
-async function netCreate(){saveName();if(!NET.ok)return;const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
-  const room={host:NET.uid,status:'lobby',track:SV.sel.track,laps:SV.set.laps,bots:3,up:false,created:SV_TS,players:{[NET.uid]:myEntry()}};
-  try{await fb.put('rooms/'+code,room);await fb.put('lobbies/'+code,{hostName:myName(),track:SV.sel.track,n:1,status:'lobby',updated:SV_TS});netEnter(code);}catch(e){toast('Could not create a room');}}
+function newPeer(id){return new Promise((res,rej)=>{const p=id?new window.Peer(id,{debug:0}):new window.Peer({debug:0});let done=false;
+  p.on('open',()=>{done=true;res(p);});p.on('error',e=>{if(!done){done=true;try{p.destroy();}catch(_){}rej(e);}else netPeerError(e,p);});setTimeout(()=>{if(!done){done=true;try{p.destroy();}catch(_){}rej(new Error('timeout'));}},12000);});}
+function netPeerError(e,p){if(p&&p!==NET.peer)return;if(e&&e.type==='peer-unavailable'){toast('Room not found — check the code');netExit();go('online');}}
+async function netCreate(){saveName();$('onStatus').textContent='Creating room…';
+  for(let tries=0;tries<4;tries++){const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
+    try{const peer=await newPeer(P2P_PREFIX+code);NET.peer=peer;NET.isHost=true;NET.code=code;srvOff=0;
+      NET.room={host:NET.uid,status:'lobby',track:SV.sel.track,laps:SV.set.laps,bots:3,up:false,players:{[NET.uid]:Object.assign(myEntry(),{j:Date.now()})},state:{},results:{}};
+      peer.on('connection',conn=>{conn.on('open',()=>{NET.conns[conn.peer]=conn;});
+        conn.on('data',m=>{if(!m||typeof m!=='object')return;
+          if(m.k==='ping'){try{conn.send({k:'pong',t0:m.t0,ht:Date.now()});}catch(e){}return;}
+          const r=hostApply(conn.peer,m);if(r==='full'){try{conn.send({k:'full'});}catch(e){}setTimeout(()=>conn.close(),300);}});
+        const gone=()=>{delete NET.conns[conn.peer];if(NET.room&&NET.room.players[conn.peer]){delete NET.room.players[conn.peer];hostBroadcast();}};
+        conn.on('close',gone);conn.on('error',gone);});
+      go('room');return;}catch(e){if(!(e&&e.type==='unavailable-id'))break;}}
+  $('onStatus').textContent='Could not create a room. Check your connection and try again.';}
 async function netJoin(code){saveName();code=String(code||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);if(code.length!==4){toast('Enter a 4-letter room code');return;}
-  try{const r=await fb.get('rooms/'+code);if(!r){toast('Room '+code+' not found');return;}if(activeCount(r)>=10){toast('That room is full');return;}
-    await fb.patch('rooms/'+code+'/players/'+NET.uid,myEntry());netEnter(code);}catch(e){toast('Could not join');}}
-function activeCount(r){const p=r.players||{},now=srvNow();return Object.values(p).filter(x=>x&&(typeof x.seen!=='number'||now-x.seen<15000)).length;}
-function netEnter(code){NET.code=code;NET.room=null;if(NET.es)NET.es.close();
-  NET.es=fb.stream('rooms/'+code,d=>{NET.room=d;netOnRoom();});
-  clearInterval(NET.hb);NET.hb=setInterval(netHeartbeat,3000);netHeartbeat();go('room');}
-async function netExit(){const c=NET.code;NET.code=null;if(NET.es)NET.es.close();NET.es=null;clearInterval(NET.hb);NET.room=null;NET.race=null;
-  if(c){try{await fb.del('rooms/'+c+'/players/'+NET.uid);const r=await fb.get('rooms/'+c);if(!r||!r.players||!Object.keys(r.players).length){await fb.del('rooms/'+c);await fb.del('lobbies/'+c);}}catch(e){}}}
-function netHeartbeat(){if(!NET.code)return;const c=NET.code;fb.put('rooms/'+c+'/players/'+NET.uid+'/seen',SV_TS).catch(()=>{});
-  const R=NET.room;if(!R)return;const act=activePlayers();
-  if(!R.players||!R.players[NET.uid]){if(cur==='room'){toast('You left the room');netExit();go('online');}return;}
-  if(!act.includes(R.host)&&act[0]===NET.uid)fb.patch('rooms/'+c,{host:NET.uid}).catch(()=>{});// host left: oldest remaining takes over
-  if(amHost()){fb.patch('lobbies/'+c,{hostName:myName(),track:R.track,n:act.length,status:R.status,updated:SV_TS}).catch(()=>{});
-    for(const k of Object.keys(R.players||{}))if(!act.includes(k))fb.del('rooms/'+c+'/players/'+k).catch(()=>{});
-    if(R.status==='racing'&&R.race&&srvNow()-R.race.startAt>1000*60*(R.race.laps+3))fb.patch('rooms/'+c,{status:'lobby'}).catch(()=>{});}}
+  $('onStatus').textContent='Joining '+code+'…';
+  try{const peer=await newPeer(null);NET.peer=peer;NET.isHost=false;NET.code=code;NET.uid=peer.id;
+    const conn=peer.connect(P2P_PREFIX+code,{reliable:true});NET.host=conn;
+    clearTimeout(NET.failT);NET.failT=setTimeout(()=>{if(NET.host===conn&&!conn.open){toast('Could not reach room '+code);netExit();go('online');}},12000);
+    conn.on('open',()=>{if(NET.host!==conn)return;clearTimeout(NET.failT);conn.send({k:'hello',entry:myEntry()});const t0=Date.now();conn.send({k:'ping',t0});go('room');
+      NET.pingT=setInterval(()=>{if(conn.open)conn.send({k:'ping',t0:Date.now()});},5000);});
+    conn.on('data',m=>{if(NET.host!==conn||!m||typeof m!=='object')return;
+      if(m.k==='pong'){const t1=Date.now(),off=m.ht-(m.t0+t1)/2;srvOff=NET.offSet?srvOff*.7+off*.3:off;NET.offSet=true;}
+      else if(m.k==='room'){NET.room=m.R;netOnRoom();}
+      else if(m.k==='st'){NET.snaps=m.S||{};}
+      else if(m.k==='full'){toast('That room is full');netExit();go('online');}});
+    conn.on('close',()=>{if(NET.host===conn&&NET.code===code){toast('The host closed the room');const racing=!!NET.race;netExit();if(!racing)go('online');}});
+  }catch(e){toast('Could not join right now');netExit();renderOnline();}}
+function netExit(){clearInterval(NET.pingT);clearTimeout(NET.failT);try{NET.host&&NET.host.close();}catch(e){}for(const id in NET.conns){try{NET.conns[id].close();}catch(e){}}
+  try{NET.peer&&NET.peer.destroy();}catch(e){}Object.assign(NET,{code:null,peer:null,conns:{},host:null,room:null,race:null,isHost:false,offSet:false,uid:'u'+Math.random().toString(36).slice(2,10)});}
 function netOnRoom(){const R=NET.room;if(!R)return;
   if(R.status==='racing'&&R.race&&R.race.startAt!==NET.lastStart&&R.race.grid&&R.race.grid.includes(NET.uid)){NET.lastStart=R.race.startAt;startOnlineRace(R.race);return;}
-  if(NET.race&&R.state)NET.snaps=R.state;
-  if(cur==='room'){const sig=JSON.stringify([R.host,R.status,R.track,R.laps,R.bots,R.up,Object.entries(R.players||{}).map(([k,v])=>[k,v.name,v.r,v.t,v.ready])]);if(sig!==NET.sig){NET.sig=sig;renderRoom();}}
+  if(cur==='room'){const sig=JSON.stringify([R.status,R.track,R.laps,R.bots,R.up,Object.entries(R.players||{}).map(([k,v])=>[k,v.name,v.r,v.t,v.ready])]);if(sig!==NET.sig){NET.sig=sig;renderRoom();}}
   if(cur==='results'&&mode==='online')renderOnlineResults();}
-
-// ----- room lobby -----
+// ---- room lobby ----
 function renderRoom(){const R=NET.room;$('rmCode').textContent=NET.code||'';if(!R){$('rmPlayers').innerHTML='<div class="riv"><b>Connecting…</b></div>';return;}
   const host=amHost(),act=activePlayers(),P=R.players||{};
   $('rmPlayers').innerHTML=act.map(k=>{const p=P[k]||{},cd=D.carDef(p.r||0,TYPES[p.t||0]);const RR=RACERS[p.r||0];
@@ -1662,27 +1663,24 @@ function renderRoom(){const R=NET.room;$('rmCode').textContent=NET.code||'';if(!
   if(host){const row=(label,val,dec,inc,k)=>{const d=document.createElement('div');d.className='setrow';d.innerHTML=`<span>${label}</span>`;
       const a=document.createElement('button');a.textContent='◀';a.dataset.k=k+0;a.onclick=()=>{click();dec();};const v=document.createElement('em');v.textContent=val;
       const b=document.createElement('button');b.textContent='▶';b.dataset.k=k+1;b.onclick=()=>{click();inc();};d.append(a,v,b);rows.appendChild(d);};
-    const P2=p=>fb.patch('rooms/'+NET.code,p).catch(()=>{});
-    row('Track',(R.track+1)+'',()=>P2({track:(R.track+49)%50}),()=>P2({track:(R.track+1)%50}),'trk');
-    row('Laps',R.laps,()=>P2({laps:Math.max(1,R.laps-1)}),()=>P2({laps:Math.min(10,R.laps+1)}),'lap');
-    row('AI racers',R.bots,()=>P2({bots:Math.max(0,R.bots-1)}),()=>P2({bots:Math.min(10-act.length,R.bots+1)}),'bot');
-    row('Upgrades',R.up?'On':'Off',()=>P2({up:!R.up}),()=>P2({up:!R.up}),'upg');}
+    row('Track',(R.track+1)+'',()=>hostSet({track:(R.track+49)%50}),()=>hostSet({track:(R.track+1)%50}),'trk');
+    row('Laps',R.laps,()=>hostSet({laps:Math.max(1,R.laps-1)}),()=>hostSet({laps:Math.min(10,R.laps+1)}),'lap');
+    row('AI racers',R.bots,()=>hostSet({bots:Math.max(0,R.bots-1)}),()=>hostSet({bots:Math.min(10-act.length,R.bots+1)}),'bot');
+    row('Upgrades',R.up?'On':'Off',()=>hostSet({up:!R.up}),()=>hostSet({up:!R.up}),'upg');}
   else rows.innerHTML='<div class="hint" style="text-align:left">The host picks the track, laps and AI racers.</div>';
   const go2=$('rmGo');
   if(host){const others=act.filter(k=>k!==NET.uid),allReady=others.every(k=>P[k]&&P[k].ready);go2.textContent=allReady?'START RACE':'START (not everyone is ready)';
     go2.disabled=!(others.length||R.bots);go2.onclick=()=>netStart();}
-  else{const me=P[NET.uid]||{};go2.disabled=false;go2.textContent=me.ready?'✓ READY (tap to cancel)':'READY UP';go2.onclick=()=>{click();fb.patch('rooms/'+NET.code+'/players/'+NET.uid,{ready:!me.ready}).catch(()=>{});};}
-  previewTrack(R.track||0);const myId=carId(SV.sel.r,TYPES[SV.sel.t]);setShowCar(myId);
-  if(R.status==='racing')$('rmNote').textContent='A race is running — you\'ll join the next one.';else $('rmNote').textContent='Share code '+NET.code+' with friends so they can join.';}
-async function netStart(){const R=NET.room;if(!R||!amHost())return;const act=activePlayers(),used=new Set(act.map(k=>R.players[k].r)),bots=[];
+  else{const me=P[NET.uid]||{};go2.disabled=false;go2.textContent=me.ready?'✓ READY (tap to cancel)':'READY UP';go2.onclick=()=>{click();sendMe({ready:!me.ready});};}
+  previewTrack(R.track||0);setShowCar(carId(SV.sel.r,TYPES[SV.sel.t]));
+  $('rmNote').textContent=R.status==='racing'?'A race is running — you\'ll join the next one.':(host?'Share code '+NET.code+' with friends so they can join.':'Waiting for the host to start…');}
+function netStart(){const R=NET.room;if(!R||!amHost())return;const act=activePlayers(),used=new Set(act.map(k=>R.players[k].r)),bots=[];
   const free=[...Array(10).keys()].filter(r=>!used.has(r));for(let i=0;i<R.bots&&act.length+bots.length<10;i++){const r=free.length?free.splice(Math.floor(Math.random()*free.length),1)[0]:Math.floor(Math.random()*10);bots.push({r,t:Math.floor(Math.random()*4)});}
   const grid=act.slice().sort(()=>Math.random()-.5).concat(bots.map((_,i)=>'bot'+i));
   const race={startAt:srvNow()+6000,track:R.track,laps:R.laps,up:!!R.up,bots,grid,diff:SV.set.diff,
     who:Object.fromEntries(act.map(k=>[k,{name:R.players[k].name,r:R.players[k].r,t:R.players[k].t,L:R.players[k].L}]))};
-  const ready={};for(const k of act)ready[k+'/ready']=false;
-  try{await fb.patch('rooms/'+NET.code,{status:'racing',race,state:null,results:null});await fb.patch('rooms/'+NET.code+'/players',Object.fromEntries(act.map(k=>[k+'/ready',false])));}catch(e){toast('Could not start');}}
-
-// ----- the race itself -----
+  for(const k of act)R.players[k].ready=false;hostSet({status:'racing',race,state:{},results:{}});}
+// ---- the race ----
 function startOnlineRace(race){NET.race=race;NET.snaps={};mode='online';LAPS=race.laps;buildTrack(race.track);cars=[];wallHits=0;
   const df=DIFF[race.diff??1],host=amHost();let botI=0;
   race.grid.forEach((nid,k)=>{let c;
@@ -1700,25 +1698,21 @@ function netRemote(c,dt){const s=NET.snaps&&NET.snaps[c.nid];if(!s)return;
   c.ma+=angDiff(s.ma,c.ma)*k;c.alpha+=((s.al||0)-c.alpha)*k;c.h=c.ma-c.alpha;c.v=s.v;c.lap=s.lap||0;c.boosting=!!s.b;c.drifting=!!s.d;
   if(s.f&&!c.finished){c.finished=true;c.finishTime=s.f;}}
 const r2=v=>Math.round(v*100)/100;
-function packCar(c){return {x:r2(c.x),z:r2(c.z),ma:r2(c.ma),al:r2(c.alpha),v:r2(c.v),lap:c.lap,b:c.boosting?1:0,d:c.drifting?1:0,f:c.finished?r2(c.finishTime):0,t:SV_TS};}
+function packCar(c){return {x:r2(c.x),z:r2(c.z),ma:r2(c.ma),al:r2(c.alpha),v:r2(c.v),lap:c.lap,b:c.boosting?1:0,d:c.drifting?1:0,f:c.finished?r2(c.finishTime):0,t:srvNow()};}
 function netTick(dt){if(!NET.code||!NET.race||!player)return;NET.sendT-=dt;if(NET.sendT>0)return;NET.sendT=.1;
-  const out={[NET.uid]:packCar(player)};if(amHost())for(const c of cars)if(c.nid&&c.nid.startsWith('bot')&&!c.remote)out[c.nid]=packCar(c);
-  for(const k in out)out[k].t=srvNow();fb.patch('rooms/'+NET.code+'/state',out).catch(()=>{});
-  if(amHost())for(const c of cars)if(c.nid&&c.nid.startsWith('bot')&&!c.remote&&c.finished&&!c.sentRes){c.sentRes=true;fb.patch('rooms/'+NET.code+'/results/'+c.nid,{name:c.name,t:r2(c.finishTime)}).catch(()=>{});}}
-function netFinish(){if(!NET.code)return;fb.patch('rooms/'+NET.code+'/results/'+NET.uid,{name:myName(),t:r2(player.finishTime),best:bestLap?r2(bestLap):null}).catch(()=>{});
-  const st=packCar(player);st.t=srvNow();fb.patch('rooms/'+NET.code+'/state',{[NET.uid]:st}).catch(()=>{});}
+  if(NET.isHost){const S=NET.room.state||(NET.room.state={});S[NET.uid]=packCar(player);
+    for(const c of cars)if(c.nid&&c.nid.startsWith('bot')&&!c.remote){S[c.nid]=packCar(c);if(c.finished&&!c.sentRes){c.sentRes=true;hostApply(c.nid,{k:'res',r:{name:c.name,t:r2(c.finishTime)}});}}
+    NET.snaps=S;const msg={k:'st',S};for(const id in NET.conns){try{NET.conns[id].send(msg);}catch(e){}}}
+  else if(NET.host&&NET.host.open){try{NET.host.send({k:'st',s:packCar(player)});}catch(e){}}}
+function netFinish(){if(!NET.code)return;const r={name:myName(),t:r2(player.finishTime),best:bestLap?r2(bestLap):null};
+  if(NET.isHost)hostApply(NET.uid,{k:'res',r});else if(NET.host&&NET.host.open){try{NET.host.send({k:'res',r});NET.host.send({k:'st',s:packCar(player)});}catch(e){}}}
 function renderOnlineResults(){const R=NET.room;if(!R)return;const res=R.results||{};for(const c of cars){const r=res[c.nid];if(r&&!c.finished){c.finished=true;c.finishTime=r.t;}}
   const st=standings();$('rTable').innerHTML=st.map((c,i)=>`<tr class="${c.isPlayer?'me':''}"><td>${ord(i+1)}</td><td>${c.isPlayer?'YOU':esc(c.name)}${c.remote&&!c.nid.startsWith('bot')?' 🌐':''}</td><td>${c.finished?fmt(c.finishTime):'racing…'}</td></tr>`).join('');}
 function confirmLeave(){const b=$('pauseBtn');if(b.dataset.arm==='1'){b.dataset.arm='';b.textContent='II';return true;}b.dataset.arm='1';b.textContent='Leave?';setTimeout(()=>{b.dataset.arm='';b.textContent='II';},2500);return false;}
 function netLeaveRace(){NET.race=null;state='menu';cars=[];player=null;showHUD(false);
-  if(amHost()&&NET.room&&NET.room.status==='racing')fb.patch('rooms/'+NET.code,{status:'lobby'}).catch(()=>{});go(NET.code?'room':'online');}
-
-// ----- world lap records (all modes) -----
-async function submitRecord(ti,t){if(NET.ok===false)return;try{if(NET.ok==null&&!await netCheck())return;const k='records/'+ti+'/'+NET.uid,old=await fb.get(k);
-  if(!old||t<old.t)await fb.put(k,{n:myName(),t:r2(t),c:carInfo(carId(SV.sel.r,TYPES[SV.sel.t])).name,at:SV_TS});}catch(e){}}
-async function worldTop(ti,el){if(!el)return;el.textContent='';if(NET.ok===false)return;try{if(NET.ok==null&&!await netCheck())return;const r=await fb.get('records/'+ti)||{};
-  const top=Object.values(r).filter(x=>x&&x.t).sort((a,b)=>a.t-b.t).slice(0,3);if(TI!==ti&&cur!=='setup')return;
-  el.innerHTML=top.length?'🌍 World best: '+top.map((x,i)=>`${i+1}. ${esc(x.n)} ${fmt(x.t)}`).join(' · '):'🌍 No world record yet — set the first!';}catch(e){}}
+  if(amHost()&&NET.room&&NET.room.status==='racing')hostSet({status:'lobby'});go(NET.code?'room':'online');}
+// lap records stay on this device (no database)
+function submitRecord(){}function worldTop(ti,el){if(el)el.textContent='';}
 $('onCreate').onclick=()=>{click();netCreate();};$('onJoin').onclick=()=>{click();netJoin($('onCode').value);};
 $('onName').addEventListener('change',saveName);$('rmLeave').onclick=async()=>{click();await netExit();go('online');};
 $('rmCar').onclick=()=>{click();go('racer');};
