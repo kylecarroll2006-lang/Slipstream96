@@ -463,7 +463,8 @@ function solid(polys,c,out){// orient every face of a convex piece outward
   const all=polys.flat(),cen=[0,1,2].map(k=>all.reduce((s,p)=>s+p[k],0)/all.length);
   for(let v of polys){let n=newell(v);if(!n)continue;const fc=[0,1,2].map(k=>v.reduce((s,p)=>s+p[k],0)/v.length);
     if(n[0]*(fc[0]-cen[0])+n[1]*(fc[1]-cen[1])+n[2]*(fc[2]-cen[2])<0){v=v.slice().reverse();n=n.map(x=>-x);}
-    out.push({v:v.map(p=>p.map(x=>+x.toFixed(4))),n,c:typeof c==='function'?c(v,n):c});}}
+    const F={v:v.map(p=>p.map(x=>+x.toFixed(4))),n,c:typeof c==='function'?c(v,n):c};if(WTAG)F.w=WTAG;out.push(F);}}
+let WTAG=null;
 function boxP(w,h,d,x,y,z){const X=[x-w/2,x+w/2],Y=[y-h/2,y+h/2],Z=[z-d/2,z+d/2],P=(i,j,k)=>[X[i],Y[j],Z[k]];
   return[[P(0,0,0),P(0,1,0),P(0,1,1),P(0,0,1)],[P(1,0,0),P(1,0,1),P(1,1,1),P(1,1,0)],[P(0,0,0),P(0,0,1),P(1,0,1),P(1,0,0)],
     [P(0,1,0),P(1,1,0),P(1,1,1),P(0,1,1)],[P(0,0,0),P(1,0,0),P(1,1,0),P(0,1,0)],[P(0,0,1),P(0,1,1),P(1,1,1),P(1,0,1)]];}
@@ -610,7 +611,7 @@ D.carFaces=function(type,spoiler,stripe,ex,variant){
   if(spoiler===3||spoiler===4){wing(.82);for(const s of[-.65,.65])box(.1,.82,.18,s,top+.4,sz,'dark');}
   // wheels: tucked under the body with fender arches, and a real rim face on the outside
   const hasFlare=type==='drift'||ex.kit===2,fl=hasFlare?.13:0,outer=W/2+.05+fl,wx=outer-p.w/2;
-  for(const s of[-1,1])for(const z of[p.wf,p.wr]){const R=p.r*1.06,cy=R,x=s*wx,wv=ex.wheel||0,SEG=24;
+  const WH=[];for(const s of[-1,1])for(const z of[p.wf,p.wr]){const R=p.r*1.06,cy=R,x=s*wx,wv=ex.wheel||0,SEG=24,wi=WH.length;WH.push({x:s*wx,y:cy,z,r:R,front:z===p.wf,side:s});WTAG=wi+':s';
     // tyre: rounded profile (tread band + shoulders) and a bead ring where it meets the rim
     solid(cylP(R*.965,p.w,x,cy,z,SEG),'tire',out);
     solid(cylP(R,p.w-.1,x,cy,z,SEG),'tire',out);
@@ -626,7 +627,7 @@ D.carFaces=function(type,spoiler,stripe,ex,variant){
     // rim barrel (dark, recessed), brake disc and caliper seen through the spokes
     disc(RR,.0,'dark');
     if(wv!==2){disc(R*.56,.018,'chrome',SEG);ring(R*.2,R*.3,.026,'dark',12);const[a0,a1]=lay(.034);
-      box(Math.abs(a1-a0),R*.36,R*.24,(a0+a1)/2,cy+R*.3,z+R*.33,'accent');box(Math.abs(a1-a0)+.004,R*.08,R*.16,(a0+a1)/2+s*.002,cy+R*.42,z+R*.36,'white');}
+      WTAG=wi+':f';box(Math.abs(a1-a0),R*.36,R*.24,(a0+a1)/2,cy+R*.3,z+R*.33,'accent');box(Math.abs(a1-a0)+.004,R*.08,R*.16,(a0+a1)/2+s*.002,cy+R*.42,z+R*.36,'white');WTAG=wi+':s';}
     if(wv===0){ // classic: five chunky spokes, a polished lip and a coloured centre cap
       spokes(5,R*.16,RR-.02,.12,.045,'rim');ring(RR-.06,RR,.055,'rim');disc(R*.22,.058,'rim',10);lugs(5,R*.14,.07);disc(R*.08,.075,'accent',8);}
     if(wv===1){ // split six-spoke: pairs of thin spokes
@@ -636,6 +637,7 @@ D.carFaces=function(type,spoiler,stripe,ex,variant){
       for(let i=0;i<8;i++){const t=i/8*Math.PI*2;const[a0,a1]=lay(.046);box(Math.abs(a1-a0),.07,.07,(a0+a1)/2,cy+Math.cos(t)*R*.6,z+Math.sin(t)*R*.6,'dark');}}
     if(wv===3){ // turbine: twelve thin vanes between two rings
       spokes(12,R*.24,RR-.03,.04,.045,'rim');ring(R*.22,R*.3,.055,'chrome',16);ring(RR-.06,RR,.055,'rim');lugs(5,R*.14,.065);disc(R*.1,.075,'accent',8);}
+    WTAG=null;
     // fender arch over each wheel so the tire sits inside the body
     {const tz=zT(z),ar=R+.06,ix=s*(W/2*tz-.15),ox2=s*(W/2*tz+.09+fl);
       // the arch covers the whole tyre width and drops down into the hood, so no tyre shows from above
@@ -650,7 +652,7 @@ D.carFaces=function(type,spoiler,stripe,ex,variant){
           solid(loftP([[z1-.02,.16],[z1+.06,.16],[z1+.06,.26],[z1-.02,.26]],hwA*.95,hwA*.95,xc+s*hwA*.05),'dark',out);}}
       for(let i=0;i<4;i++){const t0=(i/4*.3-.02)*Math.PI,t1=((i+1)/4*.3-.02)*Math.PI;
         solid(arcP(ix,ox2,cy,z,t0,t1,ar,ar+.12),'body',out);solid(arcP(ix,ox2,cy,z,Math.PI-t1,Math.PI-t0,ar,ar+.12),'body',out);}}}
-  return {faces:out,rearZ:rz,frontZ:nose[0]};
+  WTAG=null;return {faces:out,rearZ:rz,frontZ:nose[0],wheels:WH};
 };
 
 // low-poly racer figures (original characters)
@@ -816,11 +818,18 @@ function shadowMesh(w,l){if(!shadowTex){const cv=document.createElement('canvas'
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w,l),new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.03;m.userData.keep=true;return m;}
 function makeCar(L,race){
   const ex={hood:L.hood||0,kit:L.kit||0,wheel:L.wheel||0,tone:L.tone||0,vents:L.vents||0,fins:L.fins||0,exh:L.exh||0,lamps:L.lamps||0,canard:L.canard||0,roof:L.roof||0,carbon:L.carbon||0},k=L.type+L.spoiler+'/'+L.stripe+'/'+(L.racer??-1)+JSON.stringify(ex),
-    C=carCache[k]||(carCache[k]=(()=>{const f=D.carFaces(L.type,L.spoiler,L.stripe,ex,L.racer??-1);return{g:facesToGeos(f.faces),rearZ:f.rearZ,frontZ:f.frontZ};})());
+    C=carCache[k]||(carCache[k]=(()=>{const f=D.carFaces(L.type,L.spoiler,L.stripe,ex,L.racer??-1),W=f.wheels||[];
+      // split the model: the body, and each wheel moved to its own centre so it can spin and steer
+      const wg=W.map((w,i)=>{const loc=(tag)=>f.faces.filter(q=>q.w===i+':'+tag).map(q=>({c:q.c,n:q.n,v:q.v.map(p=>[p[0]-w.x,p[1]-w.y,p[2]-w.z])}));return {w,spin:facesToGeos(loc('s')),fix:facesToGeos(loc('f'))};});
+      return{g:facesToGeos(f.faces.filter(q=>!q.w)),wg,rearZ:f.rearZ,frontZ:f.frontZ};})());
   const FIN=[[70,0x555555],[4,0x0a0a0a],[120,0xb8b8b8],[200,0xffffff]][L.finish||0];
   const M={body:phong(L.body,FIN[0],FIN[1]),accent:phong(L.accent,FIN[0],FIN[1]),rim:phong(L.rim,90,0x999999),dark:phong(0x1c1e26,10,0x111111),glass:Object.assign(phong(L.tint??0x16243d,120,0xbbbbbb),{transparent:true,opacity:.62,depthWrite:false}),
     chrome:phong(0xd8d8d8,100,0xaaaaaa),white:phong(0xf2f2f2,30,0x333333),tire:phong(0x141518,5,0),carbon:phong(0x24262c,140,0x8a8f9a),head:new THREE.MeshBasicMaterial({color:L.lights??0xfffbe0}),tail:new THREE.MeshBasicMaterial({color:0xff2030})};
-  const g=new THREE.Group();for(const c in C.g){const m=new THREE.Mesh(C.g[c],M[c]);m.userData.keep=true;g.add(m);}
+  const g=new THREE.Group(),bodyG=new THREE.Group();g.add(bodyG);for(const c in C.g){const m=new THREE.Mesh(C.g[c],M[c]);m.userData.keep=true;bodyG.add(m);}
+  const wheels=(C.wg||[]).map(o=>{const piv=new THREE.Group(),spin=new THREE.Group();piv.position.set(o.w.x,o.w.y,o.w.z);piv.add(spin);
+    for(const c in o.spin){const m=new THREE.Mesh(o.spin[c],M[c]);m.userData.keep=true;spin.add(m);}for(const c in o.fix){const m=new THREE.Mesh(o.fix[c],M[c]);m.userData.keep=true;piv.add(m);}
+    g.add(piv);return {piv,spin,front:o.w.front,r:o.w.r};});
+  g.userData.wheels=wheels;g.userData.bodyG=bodyG;
   g.add(shadowMesh(3.6,6.6));
   if(L.glow!=null){const gl=new THREE.Mesh(new THREE.PlaneGeometry(3.4,6.2),new THREE.MeshBasicMaterial({map:glowTex(),color:L.glow,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
     gl.rotation.x=-Math.PI/2;gl.position.y=.06;gl.userData.keep=true;g.add(gl);}
@@ -834,7 +843,7 @@ function makeCar(L,race){
   const fg=carCache.fl||(carCache.fl=(()=>{const x=new THREE.ConeGeometry(.3,1.6,6);x.rotateX(-Math.PI/2);return x;})());
   const fm=new THREE.MeshBasicMaterial({color:0xffaa22}),flames=[];
   for(const s of[-.45,.45]){const f=new THREE.Mesh(fg,fm);f.position.set(s,.33,C.rearZ-.85);f.visible=false;f.userData.keep=true;g.add(f);flames.push(f);}
-  g.rotation.order='YXZ';g.userData={flames,bodyMat:M.body,keepAll:true};return g;
+  g.rotation.order='YXZ';g.userData={flames,bodyMat:M.body,keepAll:true,wheels,bodyG};return g;
 }
 let _gt=null,_ng=null;const _nt={};
 function glowTex(){if(_gt)return _gt;const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d'),gr=x.createRadialGradient(32,32,6,32,32,32);
@@ -1549,7 +1558,7 @@ function physics(c,inp,dt){
   c.boosting=c.burstT>0;
   if(c.boosting)maxV*=s.bpow;
   if(c.slip)maxV*=1.04;if(off)maxV*=.62;if(onCut)maxV*=.88;
-  if(inp.gas){if(c.v<maxV)c.v+=(c.air?.25:1)*s.acc*(c.boosting?1.6:1)*(1-.4*clamp(c.v/maxV,0,1))*dt;}else c.v-=Math.sign(c.v)*Math.min(Math.abs(c.v),9*dt);
+  if(inp.gas){if(c.v<maxV)c.v+=(c.air?.25:1)*s.acc*(c.boosting?1.6:1)*(1-.4*clamp(c.v/maxV,0,1))*dt;}else c.v-=Math.sign(c.v)*Math.min(Math.abs(c.v),(13+Math.abs(c.v)*.06)*dt);
   if(c.v>maxV)c.v-=Math.min(c.v-maxV,(off?45:20)*dt);
   const brakeTap=inp.brake&&!c.prevBrake;c.prevBrake=inp.brake;
   c.tapT=(c.tapT||0)+dt;let dbl=false;if(brakeTap){if(c.tapT<.35)dbl=true;c.tapT=0;}
@@ -1566,8 +1575,9 @@ function physics(c,inp,dt){
   else{c.db=Math.max(0,c.db-dt*3.2);c.dIn+=(inp.steer*c.driftDir-c.dIn)*Math.min(1,dt*5);}
   const dbS=c.db*c.db*(3-2*c.db);   // smoothstep so the blend has no corners
   const driftRate=c.driftDir*s.turn*(.42+.62*clamp(c.dIn,-.3,1))*s.driftTurn*spdF;
-  {const wDes=c.db>0?gripRate*(1-dbS)+driftRate*dbS:gripRate;c.w=(c.w||0)+(wDes-(c.w||0))*Math.min(1,dt*(c.drifting||c.db>0?7:12));c.ma-=c.w*dt;}
-  const tgtA=c.drifting?c.driftDir*clamp(.5+.26*c.dIn,.22,.78)*Math.min(1,dbS*1.25):0;
+  {const wDes=c.db>0?gripRate*(1-dbS)+driftRate*dbS:gripRate;c.w=(c.w||0)+(wDes-(c.w||0))*Math.min(1,dt*(c.drifting||c.db>0?7:17));c.ma-=c.w*dt;
+   if(!c.drifting&&c.v>0)c.v-=Math.abs(c.w)*c.v*.045*dt;c.stIn=inp.steer;}
+  const gripA=clamp((c.w||0)*Math.max(0,c.v)*.0016,-.09,.09),tgtA=c.drifting?c.driftDir*clamp(.5+.26*c.dIn,.22,.78)*Math.min(1,dbS*1.25):gripA*(1-dbS);
   {const counter=c.spinT>0&&inp.steer*c.alpha<-.2;const rate=c.drifting?4:(c.spinT>0?(counter?3.2:1.15):3);c.alphaV=(c.alphaV||0)+((tgtA-c.alpha)*rate*rate-(c.alphaV||0)*2*rate)*Math.min(dt,.05);c.alpha+=c.alphaV*dt;if(c.spinT>0)c.alpha+=(tgtA-c.alpha)*Math.min(1,dt*rate*.3);}
   if(c.drifting){
     c.v-=c.v*s.scrub*.22*dt;{const gn=dt*.075*s.driftGain*c.db*clamp(c.v/30,.3,1);c.gD=(c.gD||0)+gn;c.boost=Math.min(1,c.boost+gn);}if(c.isPlayer)driftTime+=dt;
@@ -2025,6 +2035,19 @@ function garageCam(dt){
 
 
 
+
+// ================= wheels and suspension =================
+function carAnim(c,dt){const U=c.mesh.userData,W=U.wheels;if(!W||!W.length)return;
+  const k=Math.min(1,dt*10);c.vst=(c.vst||0)+((c.stIn||0)-(c.vst||0))*k;
+  const db=c.db||0,dbS=db*db*(3-2*db),steerA=-(c.vst)*.5*(1-.45*clamp(c.v/90,0,1)),counter=clamp(c.alpha||0,-.62,.62);
+  const sa=steerA*(1-dbS)+counter*dbS;
+  c.wrot=(c.wrot||0)+(c.v/(W[0].r||.47))*dt*(c.drifting&&c.thr?1.25:1);   // rear-wheel spin-up while drifting on the throttle
+  for(const w of W){w.spin.rotation.x=c.wrot;if(w.front)w.piv.rotation.y=sa;}
+  // suspension: lean against the turn, squat under power, dive under braking
+  const acc=((c.v-(c.pv??c.v))/Math.max(dt,1e-3));c.pv=c.v;c.accS=(c.accS||0)+(acc-(c.accS||0))*Math.min(1,dt*6);
+  const lat=(c.w||0)*Math.max(0,c.v),roll=clamp(-lat*.0045,-.07,.07),pitch=clamp(-c.accS*.0028,-.05,.04);
+  const B=U.bodyG;B.rotation.z+=(roll-B.rotation.z)*Math.min(1,dt*7);B.rotation.x+=(pitch-B.rotation.x)*Math.min(1,dt*6);B.position.y+=((c.air?.05:0)-B.position.y)*Math.min(1,dt*8);}
+
 // ================= dashboard: tachometer, gear and speed =================
 const TA0=Math.PI*1.12,TA1=-Math.PI*.12;   // sweep of the rev dial (radians, maths orientation)
 function tachPt(f,r){const a=TA0+(TA1-TA0)*f;return [120+Math.cos(a)*r,100-Math.sin(a)*r];}
@@ -2221,8 +2244,9 @@ function loop(now){
   if(state==='paused'){renderer.render(scene,camera);return;}
   if(camera.view&&camera.view.enabled)camera.clearViewOffset();
   step(dt);
-  for(const c of cars){c.mesh.position.set(c.x,c.y,c.z);c.mesh.rotation.y=c.h;{const tx=-Math.atan(c.grade||0)*.9,tz=-Math.atan(BK[c.idx]||0)+clamp(c.alpha*-.12,-.08,.08)-clamp((c.w||0)*.025,-.05,.05),k=Math.min(1,dt*9);c.rx=(c.rx??tx)+(tx-(c.rx??tx))*k;c.rz=(c.rz??tz)+(tz-(c.rz??tz))*k;c.mesh.rotation.x=c.rx;c.mesh.rotation.z=c.rz;}
-    for(const f of c.mesh.userData.flames){f.visible=c.boosting;if(c.boosting)f.scale.set(1,1,.7+Math.random()*.7);}}
+  for(const c of cars){c.mesh.position.set(c.x,c.y,c.z);c.mesh.rotation.y=c.h;{const tx=-Math.atan(c.grade||0)*.9,tz=-Math.atan(BK[c.idx]||0),k=Math.min(1,dt*9);c.rx=(c.rx??tx)+(tx-(c.rx??tx))*k;c.rz=(c.rz??tz)+(tz-(c.rz??tz))*k;c.mesh.rotation.x=c.rx;c.mesh.rotation.z=c.rz;}
+    for(const f of c.mesh.userData.flames){f.visible=c.boosting;if(c.boosting)f.scale.set(1,1,.7+Math.random()*.7);}
+    carAnim(c,dt);}
   updPuffs(dt);updSlipFX(dt);ttGhostDraw();if(mode==='online')netTick(dt);
   if(resultsTimer>0){resultsTimer-=dt;if(resultsTimer<=0){showHUD(false);go('results');}}
   if(player&&TH){const dark=inTun[player.idx]?1:0,hi=LIGHT.h;hemi.intensity+=((dark?.35:hi)-hemi.intensity)*Math.min(1,dt*4);sun.intensity+=((dark?.1:LIGHT.s)-sun.intensity)*Math.min(1,dt*4);}
