@@ -2029,7 +2029,7 @@ function physics(c,inp,dt){
   c.tapT=(c.tapT||0)+dt;let dbl=false;if(brakeTap){if(c.tapT<.35)dbl=true;c.tapT=0;}
   if(dbl&&!inp.ai){if(c.latch){c.latch=false;}else c.latch=true;}
   const wantDrift=inp.drift||c.latch;
-  if(!c.drifting&&wantDrift&&c.v>19&&Math.abs(inp.steer)>.15){c.drifting=true;c.driftDir=Math.sign(inp.steer);c.dSide=c.driftDir*.32;c.alphaV=(c.alphaV||0)+c.driftDir*.3;c.exitT=0;c.dIn=Math.abs(inp.steer)*.7;}
+  if(!c.drifting&&wantDrift&&c.v>19&&Math.abs(inp.steer)>.15){c.dBank=0;c.drifting=true;c.driftDir=Math.sign(inp.steer);c.dSide=c.driftDir*.32;c.alphaV=(c.alphaV||0)+c.driftDir*.3;c.exitT=0;c.dIn=Math.abs(inp.steer)*.7;}
   if(c.latch&&c.v<15)c.latch=false;
   if(inp.brake&&!(c.latch&&c.tapT<.25))c.v-=(c.v>0?(c.drifting?16:48):15)*dt;
   c.v=Math.max(-14,c.v);if(c.mtT>0)c.mtT=Math.max(0,c.mtT-dt);if(c.mtV>0){const g=Math.min(c.mtV,dt*14);c.v+=g;c.mtV-=g;}
@@ -2048,7 +2048,7 @@ function physics(c,inp,dt){
   const gripA=clamp((c.w||0)*Math.max(0,c.v)*.0016,-.09,.09),tgtA=c.drifting?(c.dSide||0)*((s.driftAng??.4)+.3*clamp(inp.steer*Math.sign(c.dSide||1),0,1)+(inp.gas?.06:-.1)+(1-surfGrip())*.4)*Math.min(1,dbS*1.25):gripA*(1-dbS);
   {const counter=c.spinT>0&&inp.steer*c.alpha<-.2;const rate=c.drifting?5.2:(c.spinT>0?(counter?3.6:2.2):3.6);c.alphaV=(c.alphaV||0)+((tgtA-c.alpha)*rate*rate-(c.alphaV||0)*2*rate)*Math.min(dt,.05);c.alpha+=c.alphaV*dt;if(c.spinT>0)c.alpha+=(tgtA-c.alpha)*Math.min(1,dt*rate*.3);}
   if(c.drifting){
-    {const dl=c.v*(s.driftLoss??.03)*c.db*dt*(inp.gas?1:1.8)*(2-surfGrip());c.v-=dl;c.dLoss=(c.dLoss||0)+dl;}{const gn=dt*.075*s.driftGain*c.db*clamp(c.v/30,.3,1);c.gD=(c.gD||0)+gn;c.boost=Math.min(1,c.boost+gn);}if(c.isPlayer)driftTime+=dt;
+    {const dl=c.v*(s.driftLoss??.03)*c.db*dt*(inp.gas?1:1.8)*(2-surfGrip());c.v-=dl;c.dLoss=(c.dLoss||0)+dl;}{const gn=dt*.075*s.driftGain*c.db*clamp(c.v/30,.3,1);c.gD=(c.gD||0)+gn;const b0=c.boost;c.boost=Math.min(1,c.boost+gn);c.dBank=(c.dBank||0)+(c.boost-b0);}if(c.isPlayer)driftTime+=dt;
     const into=inp.steer*c.driftDir;
     // switch drift direction: hold the opposite way briefly and the car swings through to slide the other way
     {const want=Math.abs(inp.steer)>.3?Math.sign(inp.steer):Math.sign(c.dSide||c.driftDir),prev=c.dSide||0;
@@ -2109,7 +2109,7 @@ function walls(c){
     if(imp>.3){c.drifting=false;c.latch=false;}
     if(c.mesh&&!headless){const hx=c.x-nx*1.1,hz=c.z-nz*1.1;spark(hx,c.y+.6,hz,ux*.5,uz*.5,0xffc040,Math.round(1+imp*6));}
     if(c.isPlayer&&!headless&&imp>.18&&!c.onWall){shake=Math.max(shake,.15+imp*.45);thud();buzz(Math.round(20+imp*50));}
-    c.wallImp=imp;}
+    if(imp>.18)driftCrash(c);c.wallImp=imp;}
   else c.wallImp=0;
   if(c.mesh&&!headless&&Math.random()<.5){const hx=c.x-nx*1.1,hz=c.z-nz*1.1;spark(hx,c.y+.5,hz,Math.sin(c.ma)*c.v*.6,Math.cos(c.ma)*c.v*.6,0xffd060,1);}
   if(c.isPlayer)scrape(true,Math.abs(c.v)/80);
@@ -2130,11 +2130,13 @@ function collisions(){for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;
   if(rv<0){const pl=a.isPlayer||b.isPlayer||a.remote||b.remote,e=pl?.3:0,jn=-(1+e)*rv/2*(pl?1:.6),ja=a.remote?0:(b.remote?2*jn:jn),jb=b.remote?0:(a.remote?2*jn:jn);
     const set=(c,vx,vz)=>{const nv=Math.hypot(vx,vz);if(nv>.5){c.ma+=clamp(angDiff(Math.atan2(vx,vz),c.ma),-.16,.16);c.v=Math.min(nv,Math.abs(c.v)+6)*Math.sign(c.v||1);}};
     if(!a.remote&&!(a.spinT>0&&!(sa0>0)))set(a,avx-nx*ja,avz-nz*ja);if(!b.remote&&!(b.spinT>0&&!(sb0>0)))set(b,bvx+nx*jb,bvz+nz*jb);
-    const hard=Math.min(1,-rv/18);{const side=Math.sign(Math.cos(a.h)*nx-Math.sin(a.h)*nz)||1;rock(a,-side*hard*.6);rock(b,side*hard*.6);}
+    const hard=Math.min(1,-rv/18);if(hard>.25){driftCrash(a);driftCrash(b);}{const side=Math.sign(Math.cos(a.h)*nx-Math.sin(a.h)*nz)||1;rock(a,-side*hard*.6);rock(b,side*hard*.6);}
     if(!headless&&(a.mesh||b.mesh)&&-rv>3){const cx=(a.x+b.x)/2,cz=(a.z+b.z)/2;spark(cx,(a.y+b.y)/2+.7,cz,(avx+bvx)*.3,(avz+bvz)*.3,0xffd060,Math.round(2+hard*8));}
     if((a.isPlayer||b.isPlayer)&&-rv>2.5){shake=Math.max(shake,.1+hard*.35);thud();buzz(Math.round(15+hard*45));}}
   else if((a.isPlayer||b.isPlayer)&&!headless&&Math.random()<.3)spark((a.x+b.x)/2,(a.y+b.y)/2+.6,(a.z+b.z)/2,0,0,0xffd060,1);}}
 // Spin-outs: hitter H drives its nose into victim V's side or rear quarter hard enough -> V spins.
+function driftCrash(c){if(!c.drifting||!(c.dBank>0))return;c.boost=Math.max(0,c.boost-c.dBank);c.dBank=0;c.dTier=0;c.mtV=0;c.drifting=false;c.db=0;c.latch=false;
+  if(c.isPlayer&&!headless){beep(220,.14,.07);buzz(40);}}
 function trySpin(H,V,nx,nz){if(V.remote||V.spinT>0||V.spinImm>0||H.spinT>0||!racingNow())return;
   const tk=V.id+'/'+(V.nid||V.name),tl=H.touch||(H.touch={}),fresh=!(tl[tk]>raceTime-.25);tl[tk]=raceTime;if(!fresh)return;// judge only the first moment of an impact
   const hfx=Math.sin(H.ma),hfz=Math.cos(H.ma);if(hfx*nx+hfz*nz<.45)return;
@@ -2147,7 +2149,7 @@ function trySpin(H,V,nx,nz){if(V.remote||V.spinT>0||V.spinImm>0||H.spinT>0||!rac
   const rx=vfx*along*2,rz=vfz*along*2,tq=rz*nx-rx*nz;                 // torque from a hit behind the centre
   const yaw=(.2+.34*str)*(tq>=0?1:-1);V.alphaV=(V.alphaV||0)-yaw*7;
   const shove=clamp(closing*.6,4,16);V.knx=(V.knx||0)+nx*shove;V.knz=(V.knz||0)+nz*shove;V.v*=.95-.07*str;
-  V.spinT=.35+str*.3;V.spins++;H.takedowns++;H.v*=.97;rock(V,(tq>=0?1:-1)*(.5+str));rock(H,-(tq>=0?1:-1)*.35);
+  driftCrash(V);V.spinT=.35+str*.3;V.spins++;H.takedowns++;H.v*=.97;rock(V,(tq>=0?1:-1)*(.5+str));rock(H,-(tq>=0?1:-1)*.35);
   if(!headless){puff(V.x,V.z,0xf4f4f4,V.y);puff(V.x+nx,V.z+nz,0xdddddd,V.y);thud();
     if(V.isPlayer){buzz(str>.35?60:25);shake=Math.max(shake,.25+str*.25);}
     else if(H.isPlayer&&str>.2){buzz(30);H.boost=Math.min(1,H.boost+.08+.06*str);H.gT=(H.gT||0)+.08+.06*str;beep(980,.12);}}}
@@ -3102,7 +3104,7 @@ function simRace(ti,o){o=o||{};const keep={set:Object.assign({},SV.set),sel:Obje
     gapToFirstAI:+(player.finishTime-(Math.min(...cars.filter(c=>!c.isPlayer&&c.finished).map(c=>c.finishTime))||0)).toFixed(2),
     aiFinished:cars.filter(c=>!c.isPlayer&&c.finished).length,spins:player.spins,takedowns:player.takedowns,aiSpins:cars.filter(c=>!c.isPlayer).reduce((s,c)=>s+c.spins,0),walls:wallHits,maxDA:+(player.maxDA||0).toFixed(2),gain:[+(player.gD||0).toFixed(2),+(player.gS||0).toFixed(2),+(player.gT||0).toFixed(2)],boostUse:player.burstCount||0,air:+Math.max(0,...cars.map(c=>c.maxAir||0)).toFixed(2),pAir:+(player.maxAir||0).toFixed(2),jumps:player.jumps||0,cuts:cars.reduce((s,c)=>s+(c.cutCount||0),0),aiStuck:cars.filter(c=>!c.isPlayer&&!c.finished).length,drifts:driftSegs,driftTime:+driftTime.toFixed(1),maxSlide:+maxAlpha.toFixed(2)};
   headless=false;autoPilot=0;SV.set=keep.set;SV.sel=keep.sel;state='menu';cars=[];player=null;return out;}
-window.__ss={feat:()=>window.__feat,putAt:(i,off)=>{i=((i%N)+N)%N;const c=player,e=P[i];c.x=e.x+R[i].x*(off||0);c.z=e.z+R[i].z*(off||0);c.h=c.ma=Math.atan2(T[i].x,T[i].z);c.v=0;c.idx=i;camH=c.h;return [c.x,c.z];},cp:()=>CP&&{left:+CP.left.toFixed(2),next:CP.next,out:CP.out,lastAbs:CP.lastAbs},pl:()=>player&&{v:+player.v.toFixed(1),top:+player.spec.top.toFixed(1),lap:player.lap,dnf:!!player.dnf},setDiff:d=>{SV.set.diff=d;},adv:(t)=>{if(state==='countdown'){cd=0;state='race';}autoPilot=1;player.skill=1;let k=0;while(k<t){step(1/60);k+=1/60;}autoPilot=0;return [state,player.lap,Math.round(player.v)];},ttTest:(ti,laps,pilot)=>{headless=true;SV.set.laps=laps;mode='tt';startRace(ti,[]);state='race';cd=0;autoPilot=pilot;player.skill=pilot;let t=0;while(t<400&&!player.finished){step(1/60);t+=1/60;}
+window.__ss={driftCrash:c=>driftCrash(c),feat:()=>window.__feat,putAt:(i,off)=>{i=((i%N)+N)%N;const c=player,e=P[i];c.x=e.x+R[i].x*(off||0);c.z=e.z+R[i].z*(off||0);c.h=c.ma=Math.atan2(T[i].x,T[i].z);c.v=0;c.idx=i;camH=c.h;return [c.x,c.z];},cp:()=>CP&&{left:+CP.left.toFixed(2),next:CP.next,out:CP.out,lastAbs:CP.lastAbs},pl:()=>player&&{v:+player.v.toFixed(1),top:+player.spec.top.toFixed(1),lap:player.lap,dnf:!!player.dnf},setDiff:d=>{SV.set.diff=d;},adv:(t)=>{if(state==='countdown'){cd=0;state='race';}autoPilot=1;player.skill=1;let k=0;while(k<t){step(1/60);k+=1/60;}autoPilot=0;return [state,player.lap,Math.round(player.v)];},ttTest:(ti,laps,pilot)=>{headless=true;SV.set.laps=laps;mode='tt';startRace(ti,[]);state='race';cd=0;autoPilot=pilot;player.skill=pilot;let t=0;while(t<400&&!player.finished){step(1/60);t+=1/60;}
   const r={laps:TT.laps.map(x=>+x.toFixed(2)),ghost:TT.ghost?{t:+TT.ghost.t.toFixed(2),samples:TT.ghost.s.length}:null,stored:!!loadGhost(ti)};autoPilot=0;headless=false;state='menu';cars=[];player=null;mode='single';return r;},renderMusic:async(seed,menu,secs,theme,fin)=>{const sr=22050,off=new OfflineAudioContext(1,sr*secs,sr),save={AC,AU,bus:MUS.bus,fin:MUS.final};
   const nb=off.createBuffer(1,sr*2,sr),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
   const comp=off.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=4;comp.connect(off.destination);
