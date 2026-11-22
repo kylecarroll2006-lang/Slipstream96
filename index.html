@@ -2703,7 +2703,7 @@ function updAudio(dt){if(!AU)return;if(AU.sfx){AU.master.gain.setTargetAtTime(VO
   AU.lp.frequency.setTargetAtTime((200+rpm*850+thr*420)*ep.lp,t,.06);
   const tun=player&&inTun[player.idx]?1.45:1,dip=AU.shiftT>0?.4:1;
   AU.eg.gain.setTargetAtTime(on?(.026+.024*thr+.016*rpm)*dip*tun*(SV.set.engVol??1):0,t,.06);
-  const dr=on&&(player.drifting||player.spinT>0);AU.screech.g.gain.setTargetAtTime(dr?.05+Math.abs(player.alpha)*.1:0,t,.07);AU.screech.fl.frequency.setTargetAtTime(1000+(player.dSweet||0)*450+Math.sin(t*9)*120+Math.random()*120,t,.04);   // the squeal rises a little in the sweet spot
+  const dr=on&&(player.drifting||player.spinT>0);AU.screech.g.gain.setTargetAtTime(dr?.05+Math.abs(player.alpha)*.1:0,t,.07);AU.screech.fl.frequency.setTargetAtTime(1000+((player&&player.dSweet)||0)*450+Math.sin(t*9)*120+Math.random()*120,t,.04);   // the squeal rises a little in the sweet spot
   AU.rumble.g.gain.setTargetAtTime(on&&Math.abs(player.lat)>HW+1.6&&v>8?.22:0,t,.06);
   AU.wind.g.gain.setTargetAtTime(on?r*r*.02+(player.slip?.008:0):0,t,.35);AU.whoosh.g.gain.setTargetAtTime(on&&player.boosting?.12:0,t,.08);
   const amb=SV.set.sound&&(state==='race'||state==='countdown'||state==='done')&&player&&!cur,inT=player&&inTun[player.idx];
@@ -3509,7 +3509,7 @@ function loop(now){
   hudT-=dt;if(player&&hudT<=0){hudT=.05;const stn=standings(),place=stn.indexOf(player)+1;updTower(stn);$('pos').innerHTML=mode==='tt'?'<small>TIME TRIAL</small>':ord(place)+'<small>/'+cars.length+'</small>';
     $('lap').textContent=GM()==='chase'?'PURSUIT':'LAP '+clamp(player.lap,1,LAPS)+'/'+LAPS;partyHUD();$('time').textContent=fmt(raceTime);{const el=$('cpT');if(CP&&state==='race'&&!player.finished){el.classList.remove('hidden');el.textContent=CP.left.toFixed(1);el.classList.toggle('low',CP.left<=5);const g=$('cpG');g.textContent=CP.gainT>0?'↺ '+CP.full+'s':'';}else el.classList.add('hidden');}
     $('spd').innerHTML=Math.max(0,Math.round(player.v*2.3))+'<small> KM/H</small>';dashUpd(player,dt);$('boostfill').style.width=(player.boost*100)+'%';$('boostbar').classList.toggle('full',player.boost>.98);
-    $('boostbar').classList.toggle('sweet',!!player.drifting&&(player.dSweet||0)>.5);$('blabel').textContent=player.boosting?'BOOSTING!':player.boost>=.249?('BOOST ×'+Math.floor(player.boost*4+.004)):player.slip?'SLIPSTREAM':player.drifting?'DRIFT CHARGE':'BOOST';
+    $('boostbar').classList.toggle('sweet',!!(player&&player.drifting&&(player.dSweet||0)>.5));$('blabel').textContent=player.boosting?'BOOSTING!':player.boost>=.249?('BOOST ×'+Math.floor(player.boost*4+.004)):player.slip?'SLIPSTREAM':player.drifting?'DRIFT CHARGE':'BOOST';
     {const sc=slipColor();$('blabel').style.color=player.slip&&!player.boosting?(sc===-1?'hsl('+((performance.now()/30)%360)+',70%,70%)':hex(sc)):'';}drawMap();}
   renderer.render(scene,camera);
   for(const c of cars)if(c.sv){[c.x,c.y,c.z,c.h,c.ma]=c.sv;c.sv=null;}
