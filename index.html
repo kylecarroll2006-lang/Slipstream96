@@ -2205,11 +2205,13 @@ const CP_N=5;let CP=null;
 const cpUsed=()=>mode!=='online'&&mode!=='tt'&&!PARTY()&&SV.set.cpts!==false;
 function cpSegTime(a,b){const n=N,len=((b-a+n)%n||n)*TS,ref=player.spec.top*SPD_MULT()*(window.__cpk||[.42,.475,.5])[SV.set.diff];return len/ref;}
 function cpInit(){if(!player||!cpUsed()){CP=null;return;}const at=[...Array(CP_N)].map((_,k)=>Math.round(k*N/CP_N));
-  CP={at,next:1,left:cpSegTime(at[0],at[1])+4,gain:0,gainT:0,warn:0,out:false,lastAbs:N};}
+  // one set time per track and difficulty (enough for the longest section); every checkpoint resets the clock back to it, nothing carries over
+  let full=0;for(let k=0;k<CP_N;k++)full=Math.max(full,cpSegTime(at[k],at[(k+1)%CP_N]));full=Math.ceil(full*1.08);
+  CP={at,next:1,full,left:full+3,gain:0,gainT:0,warn:0,out:false,lastAbs:N};}
 function cpStep(dt){if(!CP||!player||player.finished||state!=='race')return;CP.left-=dt;if(CP.gainT>0)CP.gainT-=dt;
   const tgt=CP.at[CP.next];
   if(cpPassed(tgt)){if(window.__cpLog){const pa=CP.at[(CP.next+CP_N-1)%CP_N],len=((tgt-pa+N)%N||N)*TS;window.__cpLog.push(+(len/(player.spec.top*SPD_MULT())/(raceTime-(CP.tLast||0))).toFixed(3));}CP.tLast=raceTime;
-    const nn=(CP.next+1)%CP_N,add=cpSegTime(tgt,CP.at[nn]);CP.left+=add;CP.gain=add;CP.gainT=1.4;CP.next=nn;
+    const nn=(CP.next+1)%CP_N;CP.left=CP.full;CP.gain=CP.full;CP.gainT=1.4;CP.next=nn;CP.warn=0;
     if(!headless){beep(880,.07,.06);setTimeout(()=>beep(1175,.09,.06),70);}}
   const sec=Math.ceil(CP.left);if(CP.left<=5&&CP.left>0&&sec!==CP.warn){CP.warn=sec;if(!headless)beep(520,.06,.05);}
   if(CP.left<=0){CP.left=0;CP.out=true;player.dnf=true;player.finished=true;player.finishTime=raceTime;finishRace();}}
@@ -2219,7 +2221,7 @@ function cpPassed(tgt){const p=player.prog,lapBase=Math.floor(p/N)*N,abs=lapBase
 const DIFF={// AI pace (fraction of their car's top speed), cornering skill, rubber band, boost use
   0:{pace:[.87,.905],corner:.72,ahead:.88,behind:1.02,boost:.6},
   1:{pace:[.925,.955],corner:.83,ahead:.95,behind:1.03,boost:.45},
-  2:{pace:[1.0,1.035],corner:.97,ahead:1.0,behind:1.06,boost:.3}};   // Hard: rivals run flat out, take corners near the limit and never ease off when leading
+  2:{pace:[1.0,1.035],corner:.98,ahead:1.0,behind:1.13,boost:.3,catchUp:1}};   // Hard: rivals run flat out, take corners near the limit and never ease off when leading
 function newCar(id,name,isPlayer,L){
   const mesh=headless?null:makeCar(L||looks(id),true,isPlayer);let roof=null;if(mesh){const K=mesh.userData.cab;if(K&&isFinite(K.c1y))roof={y:Math.max(K.c1y,K.c2y),z:(K.c1z+K.c2z)/2};world.add(mesh);}
   return {mesh,id,spec:spec(id,!isPlayer||(mode==='online'&&NET.race&&!NET.race.up)),name,isPlayer,x:0,z:0,h:0,ma:0,alpha:0,v:0,idx:0,lap:0,half:true,prog:0,lat:0,boost:0,lane:0,laneT:0,laneTimer:0,
@@ -2343,17 +2345,19 @@ function aiInput(c,dt){
   let kmax=0;const span=Math.round(20+c.v*.6);for(let k=8;k<span;k+=4){kmax=Math.max(kmax,Math.abs(curvA[(c.idx+k)%N]||0));}
   const kappa=kmax/40;// rad per unit
   const canDrift=kmax>.55&&c.v>24;
-  const rate=c.spec.turn*(canDrift?.98*c.spec.driftTurn:.8)*c.cornerSkill*SPD_MULT();
+  const rate=c.spec.turn*(canDrift?.98*c.spec.driftTurn:.8)*c.cornerSkill*(c.catchUp?1.04:1)*SPD_MULT();
   let target=Math.min(c.spec.top*c.skill,kappa>1e-4?rate/kappa*.95:999,kappa>1e-4&&!canDrift?Math.sqrt((118+9*c.spec.c.drf)*surfGrip()/kappa)*.97:999);
   if(c.cutS){const nearA=c.idx<c.cutS.a-1;target=nearA?Math.min(target*1.1,c.spec.top*.62):c.spec.top*c.skill*.8;}
   // rubber band: the further an AI falls behind you, the harder it pushes; runaway leaders ease off
   if(!c.isPlayer&&player&&!player.finished){const gap=(c.prog-player.prog)/N;
     if(gap>.015)target*=1-clamp((gap-.015)/.16,0,1)*(1.04-df.ahead);
-    else if(gap<-.01)target*=1+clamp((-gap-.01)/.12,0,1)*(df.behind-1+.075);}
+    else if(gap<-.01)target*=1+clamp((-gap-.01)/(df.catchUp?.05:.12),0,1)*(df.behind-1+.075);
+    // Hard: a rival that has dropped behind you fires its boost on any straight and takes corners a touch faster to close back up
+    if(df.catchUp&&gap<-.012){c.catchUp=true;}else c.catchUp=false;}
   if(c.cop&&PM&&PM.kind==='chase')target=Math.max(target,0)*(c.copTgt?[1.1,1.13,1.16][SV.set.diff]:1.03);
   const steer=clamp(-err*2.7,-1,1),turnDir=Math.sign(-(curvA[(c.idx+12)%N]||0));
   const drift=!c.cutS&&canDrift&&Math.sign(steer)===turnDir&&Math.abs(err)>.03;
-  return {steer,gas:c.v<target,brake:c.v>target+6,drift,boost:!(c.burstT>0)&&c.boost>=.25&&kmax<.25&&(c.isPlayer||Math.random()<(c.cop&&c.copTgt?.3:[.02,.05,.45][SV.set.diff])),ai:true};
+  return {steer,gas:c.v<target,brake:c.v>target+6,drift,boost:!(c.burstT>0)&&c.boost>=.25&&kmax<(c.catchUp?.4:.25)&&(c.isPlayer||c.catchUp||Math.random()<(c.cop&&c.copTgt?.3:[.02,.05,.45][SV.set.diff])),ai:true};
 }
 
 // ================= physics =================
@@ -3453,7 +3457,7 @@ function loop(now){
   if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').style.opacity=0;}if(subT>0){subT-=dt;if(subT<=0)$('sub').textContent='';}
   if(SV.set.tags)updTags();
   hudT-=dt;if(player&&hudT<=0){hudT=.05;const stn=standings(),place=stn.indexOf(player)+1;updTower(stn);$('pos').innerHTML=mode==='tt'?'<small>TIME TRIAL</small>':ord(place)+'<small>/'+cars.length+'</small>';
-    $('lap').textContent=mode==='chase'?'PURSUIT':'LAP '+clamp(player.lap,1,LAPS)+'/'+LAPS;partyHUD();$('time').textContent=fmt(raceTime);{const el=$('cpT');if(CP&&state==='race'&&!player.finished){el.classList.remove('hidden');el.textContent=CP.left.toFixed(1);el.classList.toggle('low',CP.left<=5);const g=$('cpG');g.textContent=CP.gainT>0?'+'+CP.gain.toFixed(1):'';}else el.classList.add('hidden');}
+    $('lap').textContent=mode==='chase'?'PURSUIT':'LAP '+clamp(player.lap,1,LAPS)+'/'+LAPS;partyHUD();$('time').textContent=fmt(raceTime);{const el=$('cpT');if(CP&&state==='race'&&!player.finished){el.classList.remove('hidden');el.textContent=CP.left.toFixed(1);el.classList.toggle('low',CP.left<=5);const g=$('cpG');g.textContent=CP.gainT>0?'↺ '+CP.full+'s':'';}else el.classList.add('hidden');}
     $('spd').innerHTML=Math.max(0,Math.round(player.v*2.3))+'<small> KM/H</small>';dashUpd(player,dt);$('boostfill').style.width=(player.boost*100)+'%';$('boostbar').classList.toggle('full',player.boost>.98);
     $('blabel').textContent=player.boosting?'BOOSTING!':player.boost>=.249?('BOOST ×'+Math.floor(player.boost*4+.004)):player.slip?'SLIPSTREAM':player.drifting?'DRIFT CHARGE':'BOOST';
     {const sc=slipColor();$('blabel').style.color=player.slip&&!player.boosting?(sc===-1?'hsl('+((performance.now()/30)%360)+',70%,70%)':hex(sc)):'';}drawMap();}
