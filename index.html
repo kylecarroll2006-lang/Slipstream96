@@ -692,6 +692,15 @@ const PROF={
    cab:[[.55,.77],[-.4,1.2],[-1.3,1.21],[-2,.82]],cw:[.85,.6],wx:1.1,wf:1.75,wr:-1.7,r:.46,w:.42},
  accel:{W:2.2,body:[[-1.95,.25],[1.85,.25],[2,.5],[1.8,.85],[.8,1],[-1.9,1.05],[-2,.85]],
    cab:[[.8,.97],[.1,1.62],[-1.6,1.66],[-1.92,1.02]],cw:[.98,.8],wx:1.12,wf:1.3,wr:-1.3,r:.46,w:.42},
+ // custom-car-only bodies: four shapes no stock car uses
+ cust1:{W:2.26,body:[[-2.5,.22],[2.6,.22],[2.82,.3],[2.6,.44],[.65,.7],[-2.2,.88],[-2.56,.8]],
+   cab:[[.55,.69],[-.25,1.1],[-1.25,1.12],[-2.05,.86]],cw:[.86,.58],wx:1.14,wf:1.72,wr:-1.66,r:.47,w:.46},
+ cust2:{W:2.22,body:[[-1.72,.3],[1.82,.3],[1.98,.54],[1.84,.84],[.92,.98],[-1.6,1.03],[-1.76,.94]],
+   cab:[[.88,.96],[.3,1.72],[-1.52,1.74],[-1.72,1.05]],cw:[.97,.86],wx:1.16,wf:1.22,wr:-1.18,r:.52,w:.48},
+ cust3:{W:2.3,body:[[-2.72,.2],[2.62,.2],[2.88,.27],[2.62,.4],[1.25,.6],[-2.3,.8],[-2.76,.75]],
+   cab:[[1.3,.58],[.55,1.12],[-.65,1.14],[-1.65,.78]],cw:[.78,.48],wx:1.16,wf:1.88,wr:-1.82,r:.46,w:.5},
+ cust4:{W:2.2,body:[[-2.48,.26],[2.36,.26],[2.56,.46],[2.4,.74],[.95,.9],[-2.32,.95],[-2.5,.87]],
+   cab:[[.9,.88],[.12,1.42],[-2.18,1.45],[-2.42,.96]],cw:[.95,.84],wx:1.12,wf:1.55,wr:-1.5,r:.46,w:.42},
  drift:{W:2.35,body:[[-2.25,.22],[2.25,.22],[2.45,.4],[2.3,.68],[.85,.86],[-1.8,.9],[-2.3,.8]],
    cab:[[.8,.83],[0,1.36],[-.95,1.38],[-1.6,.87]],cw:[.9,.68],wx:1.24,wf:1.45,wr:-1.4,r:.48,w:.5}
 };
@@ -769,7 +778,7 @@ D.factory=function(r,type){const t=D.TYPES.indexOf(type),R=D.RACERS[r],x=vrng(r*
   const mu=D.MUSCLE[r+':'+type];if(mu){f.muscle=mu;f.wheel=2;f.spoiler=mu===1?1:0;f.kit=0;f.hood=0;f.lamps=2;f.canard=0;f.fins=0;f.roof=0;f.exh=0;f.stripe=f.stripe||1;}return f;};
 D.carFaces=function(type,spoiler,stripe,ex,variant){
   ex=ex||{};
-  const p=D.variantProf(ex.muscle?'muscle'+ex.muscle:type,variant),W=p.W,out=[],box=(w,h,d,x,y,z,c)=>solid(boxP(w,h,d,x,y,z),c,out);
+  const p=D.variantProf(ex.cust?'cust'+ex.cust:ex.muscle?'muscle'+ex.muscle:type,variant),W=p.W,out=[],box=(w,h,d,x,y,z,c)=>solid(boxP(w,h,d,x,y,z),c,out);
   const body=p.body,nose=body[2],hood=body[3],tail=body[body.length-1],fz=body[1][0],rz=Math.min(...body.map(q=>q[0]));
   const zMax=Math.max(...body.map(q=>q[0])),zMin=Math.min(...body.map(q=>q[0]));
   const chaik=(P,cut,mx)=>{const o=[],zM=Math.max(...P.map(q=>q[0])),zm=Math.min(...P.map(q=>q[0]));for(let i=0;i<P.length;i++){const a=P[(i-1+P.length)%P.length],v=P[i],c=P[(i+1)%P.length],e1=[a[0]-v[0],a[1]-v[1]],e2=[c[0]-v[0],c[1]-v[1]],l1=Math.hypot(...e1)||1,l2=Math.hypot(...e2)||1;
@@ -1269,9 +1278,10 @@ function specFrom(c,u){return {top:(60+c.spd*1.9)*(1+u.eng*.015),acc:(4+c.acc*3.
   driftGain:(.55+c.drf*.1)*(1+u.tir*.05),driftTurn:.82+c.drf*.055+u.tir*.02,driftLoss:Math.max(.015,.2-c.drf*.022-u.tir*.01),driftAng:.3+c.drf*.032,scrub:.055-c.drf*.004,drain:.38*(1-u.nit*.07),bpow:1.15+u.nit*.01};}
 function spec(id,noUp){const c=carInfo(id);return Object.assign({id,c},specFrom(c,noUp?NOUP:up(id)));}
 function looks(id){const c=carInfo(id),R=RACERS[c.racer],u=up(id);
-  const F=D.factory(c.racer,c.type);
+  let F=D.factory(c.racer,c.type);
+  if(c.custom){const b=TYPES.indexOf(c.type),r=c.racer;F={spoiler:(r+b*2+1)%5,stripe:0,hood:(r+b)%4,kit:(r*3+b)%4,wheel:(r+b*3+1)%4,tone:(r+b)%3,vents:(r+1)%3,fins:(r+b)%3,exh:(r*2+b)%3,lamps:(r+b+1)%3,canard:(r+b)%2,roof:(r*2+b)%3,cust:b+1};}
   return {type:c.type,racer:c.racer,body:u.paint??R.body,accent:u.accent??R.accent,rim:u.rim??R.rim,spoiler:u.spoiler??F.spoiler,stripe:u.stripe??(c.custom?0:F.stripe),
-    hood:u.hood??F.hood,kit:u.kit??F.kit,wheel:u.wheel??F.wheel,tone:u.tone??F.tone,vents:F.vents,fins:F.fins,exh:F.exh,lamps:F.lamps,canard:F.canard,roof:F.roof,muscle:F.muscle||0,carbon:u.carbon??0,finish:u.finish??0,num:u.num??0,glow:u.glow??null,tint:u.tint??null,lights:u.lights??null,slip:u.slip??null};}
+    hood:u.hood??F.hood,kit:u.kit??F.kit,wheel:u.wheel??F.wheel,tone:u.tone??F.tone,vents:F.vents,fins:F.fins,exh:F.exh,lamps:F.lamps,canard:F.canard,roof:F.roof,muscle:F.muscle||0,cust:F.cust||0,carbon:u.carbon??0,finish:u.finish??0,num:u.num??0,glow:u.glow??null,tint:u.tint??null,lights:u.lights??null,slip:u.slip??null};}
 
 // ================= renderer & bright skies =================
 const renderer=new THREE.WebGLRenderer({canvas:$('c'),antialias:true});
@@ -1396,7 +1406,7 @@ function lightGlows(C,bodyG){if(headless)return;try{const G=C.ext.emit;if(!G||!G
     const sc=a.key==='head'?1.3:1.05;sp.scale.set(sc,sc,1);sp.userData.glow=a.key;sp.userData.keep=true;bodyG.add(sp);}}catch(e){}}
 function glowForTrack(){const gm=glowMats(),dark=NIGHT||TH&&TH.night;gm.head.opacity=dark?.95:.28;gm.tail.opacity=dark?.9:.38;}
 function makeCar(L,race,isPl){
-  const ex={hood:L.hood||0,kit:L.kit||0,wheel:L.wheel||0,tone:L.tone||0,vents:L.vents||0,fins:L.fins||0,exh:L.exh||0,lamps:L.lamps||0,canard:L.canard||0,roof:L.roof||0,carbon:L.carbon||0,muscle:L.muscle||0},k=L.type+L.spoiler+'/'+L.stripe+'/'+(L.racer??-1)+JSON.stringify(ex),
+  const ex={hood:L.hood||0,kit:L.kit||0,wheel:L.wheel||0,tone:L.tone||0,vents:L.vents||0,fins:L.fins||0,exh:L.exh||0,lamps:L.lamps||0,canard:L.canard||0,roof:L.roof||0,carbon:L.carbon||0,muscle:L.muscle||0,cust:L.cust||0},k=L.type+L.spoiler+'/'+L.stripe+'/'+(L.racer??-1)+JSON.stringify(ex),
     C=carCache[k]||(carCache[k]=(()=>{const f=D.carFaces(L.type,L.spoiler,L.stripe,ex,L.racer??-1),W=f.wheels||[];
       // split the model: the body, and each wheel moved to its own centre so it can spin and steer
       const wg=W.map((w,i)=>{const loc=(tag)=>f.faces.filter(q=>q.w===i+':'+tag).map(q=>({c:q.c,n:q.n,v:q.v.map(p=>[p[0]-w.x,p[1]-w.y,p[2]-w.z])}));return {w,spin:groupFaces(loc('s')),fix:groupFaces(loc('f'))};});
@@ -3391,7 +3401,7 @@ function go(name,opts){
 }
 function applyCB(){document.body.classList.remove('cb1','cb2');if(SV.set.cb)document.body.classList.add('cb'+SV.set.cb);}applyCB();
 function closeScreens(){document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));cur=null;$('cash').classList.add('hidden');document.body.dataset.scr='';}
-function goBack(){if(PH&&PH.on){photoOff();return;}if(!cur)return;if(cur==='racer'&&mode==='online'){click();go('room');return;}if(gView){setGView(false);return;}if(cur==='pause'){togglePause();return;}const b=SCR[cur].back;if(b){click();go(b);}}
+function goBack(){if(PH&&PH.on){photoOff();return;}if(!cur)return;if(cur==='racer'&&mode==='online'){click();go('room');return;}if(gView){setGView(false);return;}if(cur==='pause'){togglePause();return;}if(cur==='cust'&&CUST.from==='garage'){CUST.from=null;CUST.d=null;click();go('garage');return;}const b=SCR[cur].back;if(b){click();go(b);}}
 function focusables(){const el=$('s-'+cur);return el?[...el.querySelectorAll('button:not([disabled])')].filter(b=>b.offsetParent!==null):[];}
 function focusFirst(){const f=focusables();if(!f.length)return;const s=f.find(b=>b.classList.contains('sel'))||f[0];s.focus({preventScroll:true});s.scrollIntoView({block:'nearest',inline:'nearest'});}
 function navMove(dir){const f=focusables();if(!f.length)return;let a=document.activeElement;if(!f.includes(a)){focusFirst();return;}
@@ -3478,12 +3488,12 @@ function buyCar(id,btn){const p=priceOf(id);if(SV.money<p){toast('Need '+money(p
   if(btn&&btn.dataset.arm!=='1'){btn.dataset.arm='1';const lb=btn.querySelector('.lockbar');if(lb)lb.textContent='Tap again to buy '+money(p);setTimeout(()=>{btn.dataset.arm='';},3000);return false;}
   SV.money-=p;if(id>=40){SV.cust=SV.cust||{};SV.cust[id-40]={spd:0,acc:0,drf:0,body:0,done:false};}else SV.own[id]=true;save();beep(990,.1);toast('🔓 '+carInfo(id).name+(id>=40?' bought — spend your 18 points!':' unlocked!'));$('cash').textContent=money(SV.money);return true;}
 // ---- custom car editor: spend exactly 18 points, 1 to 10 in each stat, pick a body ----
-const CUST={d:null};
+const CUST={d:null,from:null};
 function renderCust(){const r=SV.sel.r,saved=(SV.cust&&SV.cust[r])||{spd:0,acc:0,drf:0,body:0};if(!CUST.d||CUST.d.r!==r)CUST.d={r,spd:saved.spd,acc:saved.acc,drf:saved.drf,body:saved.body||0};const d=CUST.d;
   const used=d.spd+d.acc+d.drf,left=D.STAT_TOTAL-used,full=left===0&&d.spd>=1&&d.acc>=1&&d.drf>=1,paid=saved.paid||0,due=Math.max(0,used-paid)*PT_PRICE,ok=full&&SV.money>=due;
   $('custTitle').textContent=RACERS[r].name.toUpperCase()+"'S CUSTOM CAR";
   const pv=()=>{SV.cust=SV.cust||{};const keep=SV.cust[r];SV.cust[r]=Object.assign({},keep||{},{spd:Math.max(1,d.spd),acc:Math.max(1,d.acc),drf:Math.max(1,d.drf),body:d.body});setShowCar(40+r);if(keep)SV.cust[r]=keep;};
-  const bodies=$('custBody');bodies.innerHTML='<span>BODY</span>';TYPES.forEach((t,k)=>{const b=document.createElement('button');b.className='chip'+(d.body===k?' on':'');b.textContent=['Coupe','GT','Muscle','Drifter'][k];b.onclick=()=>{d.body=k;click();renderCust();};bodies.appendChild(b);});
+  const bodies=$('custBody');bodies.innerHTML='<span>BODY</span>';TYPES.forEach((t,k)=>{const b=document.createElement('button');b.className='chip'+(d.body===k?' on':'');b.textContent=['Wedge','Rally','Proto','Wagon'][k];b.onclick=()=>{d.body=k;click();renderCust();};bodies.appendChild(b);});
   const rows=$('custStats');rows.innerHTML='';const info={spd:['SPEED','Top speed'],acc:['ACCEL','Acceleration + longer boost'],drf:['DRIFT','Turning, drift grip + boost charge']};
   for(const k of['spd','acc','drf']){const row=document.createElement('div');row.className='cuRow';
     row.innerHTML=`<b>${info[k][0]}</b><button class="cuB" data-d="-1">-</button><i>${Array.from({length:10},(_,j)=>`<u class="${j<d[k]?'on':''}"></u>`).join('')}</i><button class="cuB" data-d="1">+</button><em>${d[k]}</em><small>${info[k][1]}</small>`;
@@ -3491,7 +3501,7 @@ function renderCust(){const r=SV.sel.r,saved=(SV.cust&&SV.cust[r])||{spd:0,acc:0
   $('custLeft').innerHTML=(left>0?`<b>${left}</b> point${left===1?'':'s'} left to spend`:(full?'✅ All 18 points spent':'Every stat needs at least 1 point'))+`<div class="cuCost">${money(PT_PRICE)} per new point · ${paid}/18 already paid for · cost now: <b>${money(due)}</b> · you have ${money(SV.money)}</div>`;$('custLeft').classList.toggle('done',ok);
   const go2=$('custGo');go2.disabled=!ok;go2.textContent=!full?'SPEND ALL 18 POINTS':SV.money<due?'NEED '+money(due):due?'BUY POINTS · '+money(due):'SAVE & USE THIS CAR';
   go2.onclick=()=>{if(!ok)return;SV.money-=due;$('cash').textContent=money(SV.money);SV.cust[r]={spd:d.spd,acc:d.acc,drf:d.drf,body:d.body,done:true,paid:Math.max(paid,used)};SV.sel.t=4;CUST.d=null;save();beep(990,.1);toast('🔧 Custom car saved');showKey='';
-    if(mode==='online'){netPushMe();go('room');}else if(mode==='career')go('career');else go('setup');};
+    const from=CUST.from;CUST.from=null;if(from==='garage')go('garage');else if(mode==='online'){netPushMe();go('room');}else if(mode==='career')go('career');else go('setup');};
   $('custReset').onclick=()=>{d.spd=d.acc=d.drf=0;click();renderCust();};
   pv();const kp=arguments[0]&&arguments[0].keep;if(kp){const [k,dd]=[kp.slice(0,3),kp.slice(3)];const rr=[...rows.children][['spd','acc','drf'].indexOf(k)];const bb=rr&&rr.querySelector(`.cuB[data-d="${dd}"]`);if(bb)bb.focus({preventScroll:true});}}
 const DESC={balanced:'Even all-rounder. Easy to drive anywhere.',speed:'Highest top speed. Shines on long straights.',accel:'Explodes out of corners and recovers fast after bumps.',drift:'Holds long, tight drifts and charges boost quickest.'};
@@ -3542,7 +3552,7 @@ const RENDER={howto:()=>{const k=lastInput==='pad'||pad?'htPad':isTouch?'htTouch
      b.onclick=()=>{randomCar();go(mode==='online'?'room':'setup');};el.appendChild(b);}
     setShowCar(selId());$('racerBio').innerHTML=`<b>${RACERS[SV.sel.r].name}</b> — ${RACERS[SV.sel.r].bio}`;
     $('racerTitle').textContent=mode==='gp'?'GRAND PRIX — CHOOSE RACER':'CHOOSE YOUR RACER';},
-  car(){CUST.d=null;const el=$('carGrid');el.innerHTML='';$('carTitle').textContent=RACERS[SV.sel.r].name.toUpperCase()+"'S CARS";
+  car(){CUST.d=null;CUST.from=null;const el=$('carGrid');el.innerHTML='';$('carTitle').textContent=RACERS[SV.sel.r].name.toUpperCase()+"'S CARS";
     TYPES.forEach((t,k)=>{const id=carId(SV.sel.r,t),c=carInfo(id);const b=document.createElement('button');b.className='opt carc'+(k===SV.sel.t?' sel':'');b.style.setProperty('--tc',TYPE_COLOR[t]);
       b.innerHTML=`<div class="tl">${TYPE_LABEL[t].toUpperCase()}</div><div class="cimg">${img(carThumb(id))}</div><div class="cn">${c.name}</div>${statBars(id,true)}`;
       if(!owned(id)){b.classList.add('locked');b.insertAdjacentHTML('beforeend',`<div class="lockbar">🔒 ${money(CAR_PRICE[t])}</div>`);}
@@ -3671,9 +3681,10 @@ function renderGarage(o){
   const tabs=$('gTypes');tabs.innerHTML='';
   TYPES.forEach((ty,k)=>{const b=document.createElement('button');b.className='tab'+(k===t?' on':'');b.style.setProperty('--tc',TYPE_COLOR[ty]);b.textContent=TYPE_LABEL[ty];b.dataset.f='type'+k;
     b.onclick=()=>{SV.sel.t=k;save();click();renderGarage({keep:'type'+k});};tabs.appendChild(b);});
-  if(owned(40+r)){const b=document.createElement('button');b.className='tab'+(t===4?' on':'');b.style.setProperty('--tc','#ffffff');b.textContent='Custom';b.dataset.f='type4';b.onclick=()=>{SV.sel.t=4;save();click();renderGarage({keep:'type4'});};tabs.appendChild(b);}
+  {const b=document.createElement('button');b.className='tab'+(t===4?' on':'');b.style.setProperty('--tc','#ffffff');b.textContent=(owned(40+r)?'':'🔒 ')+'Custom';b.dataset.f='type4';b.onclick=()=>{SV.sel.t=4;save();click();renderGarage({keep:'type4'});};tabs.appendChild(b);}
   $('gName').innerHTML=`${owned(id)?'':'🔒 '}${c.name} <span style="color:${TYPE_COLOR[c.type]}">${TYPE_LABEL[c.type]}</span>`;
-  $('gStats').innerHTML=statBars(id,true);
+  $('gStats').innerHTML=(id>=40&&!owned(id))?'<div class="custBlank">NO STATS YET — you build it: 18 points</div>':statBars(id,true);
+  if(id>=40&&owned(id)){const eb=document.createElement('button');eb.className='sec sm';eb.dataset.f='cedit';eb.textContent='✏️ EDIT STATS';eb.onclick=()=>{click();CUST.from='garage';go('cust');};$('gName').appendChild(eb);}
   const cl=$('gCats');cl.innerHTML='';let grp='';
   CATS.forEach(ct=>{if(ct.g!==grp){grp=ct.g;cl.insertAdjacentHTML('beforeend',`<div class="ghd">${grp}</div>`);}
     const b=document.createElement('button');b.className='gcat'+(ct.k===gCat?' sel':'');b.dataset.f='cat'+ct.k;b.innerHTML=`<i>${ct.ico}</i><span>${ct.n}</span>${catValue(ct.k)}`;
@@ -3684,10 +3695,13 @@ function renderGarage(o){
   renderGDetail();$('cash').textContent=money(SV.money);
   if(o&&o.keep){const k=document.querySelector(`#s-garage [data-f="${o.keep}"]`);if(k&&!k.disabled)k.focus({preventScroll:true});}
   HOOK.garage={lb:()=>{SV.sel.r=(r+9)%10;save();click();renderGarage({keep:'cat'+gCat});},rb:()=>{SV.sel.r=(r+1)%10;save();click();renderGarage({keep:'cat'+gCat});},
-    lt:()=>{const n=owned(40+r)?5:4;SV.sel.t=(t+n-1)%n;save();click();renderGarage({keep:'cat'+gCat});},rt:()=>{const n=owned(40+r)?5:4;SV.sel.t=(t+1)%n;save();click();renderGarage({keep:'cat'+gCat});},y:()=>setGView(true)};
+    lt:()=>{const n=5;SV.sel.t=(t+n-1)%n;save();click();renderGarage({keep:'cat'+gCat});},rt:()=>{const n=5;SV.sel.t=(t+1)%n;save();click();renderGarage({keep:'cat'+gCat});},y:()=>setGView(true)};
 }
 function renderGDetail(){
   const id=gCar(),u=up(id),L=looks(id),c=carInfo(id),el=$('gDetail'),ct=CATS.find(x=>x.k===gCat);
+  if(id>=40&&!owned(id)){const has=!!(SV.cust&&SV.cust[id-40]);el.innerHTML=`<div class="dtitle">🔧 CUSTOM CAR</div><div class="ddesc">${has?'You own this clean car — spend its 18 stat points to race it.':'A blank car with no stats. Buy it for '+money(CUST_PRICE)+', then put 18 points into Speed, Accel and Drift yourself ('+money(PT_PRICE)+' per point).'}</div>`;
+    const bb=document.createElement('button');bb.className='buybig'+(!has&&SV.money<CUST_PRICE?' poor':'');bb.dataset.f='buy';bb.innerHTML=has?'✏️ SET STATS':'BUY CUSTOM CAR · '+money(CUST_PRICE);
+    bb.onclick=()=>{if(!has&&!buyCar(id,null))return;click();CUST.from='garage';go('cust');};el.appendChild(bb);return;}
   if(!owned(id)){const p=CAR_PRICE[c.type];el.innerHTML=`<div class="dtitle">🔒 LOCKED</div><div class="ddesc">Buy the ${c.name} to race it and fit parts. Every car has 18 stat points — this one is built for ${TYPE_LABEL[c.type].toLowerCase()}.</div>`;
     const bb=document.createElement('button');bb.className='buybig'+(SV.money<p?' poor':'');bb.dataset.f='buy';bb.innerHTML='BUY CAR · '+money(p);bb.onclick=()=>{if(buyCar(id,null))renderGarage({keep:'buy'});};el.appendChild(bb);return;}
   el.innerHTML=`<div class="dtitle">${ct.ico} ${ct.n.toUpperCase()}</div>`;
